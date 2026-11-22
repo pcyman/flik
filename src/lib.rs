@@ -118,18 +118,24 @@ mod tests {
 
     #[test]
     fn extracts_top_level_notes_without_changing_slide_boundaries() {
-        let source = "<!-- layout: title -->\r\n## First\r\n\r\n```notes\r\n  Private <text>\r\n---\r\n```\r\n\r\n~~~notes\r\nSecond cue\r\n~~~\r\n\r\n> ```notes\r\n> Example code\r\n> ```\r\n\r\n---\r\n\r\n## Next\r\n";
+        let source = "<!-- layout: title -->\r\n## First\r\n\r\n<!-- notes:\r\nPrivate <text>\r\n---\r\n-->\r\n<!-- notes: Second cue --> <!-- notes: Third cue -->\r\n\r\n```notes\r\nOrdinary code\r\n```\r\n\r\n```md\r\n<!-- notes: Code example -->\r\n```\r\n\r\n> <!-- notes: Quote example -->\r\n\r\n---\r\n\r\n## Next\r\n";
         let deck = render(source, "fallback", |_| None).unwrap();
         assert_eq!(deck.slides.len(), 2);
-        assert_eq!(deck.slides[0].notes, "  Private <text>\n---\n\nSecond cue");
+        assert_eq!(
+            deck.slides[0].notes,
+            "Private <text>\n---\n\nSecond cue\n\nThird cue"
+        );
         assert!(deck.slides[1].notes.is_empty());
         let first = to_value(&deck.slides[0]).unwrap();
         assert_eq!(first["layout"], "title");
         assert!(first.get("notes").is_none());
         let html = first["html"].as_str().unwrap();
-        assert!(html.contains("Example code"));
-        assert!(!html.contains("Private"));
-        assert!(!html.contains("Second cue"));
+        assert!(html.contains("Code example"));
+        assert!(html.contains("Quote example"));
+        assert!(html.contains("Ordinary code"));
+        for note in ["Private", "Second cue", "Third cue"] {
+            assert!(!html.contains(note));
+        }
     }
 
     #[test]
@@ -162,6 +168,10 @@ mod tests {
             ("---\ntitle: Oops", "Unclosed"),
             ("---\ntheme: other\n---\n# Title", "Unknown theme"),
             ("<!-- layout: other -->\n# Title", "Slide 1"),
+            (
+                "# Title\n\n<!-- notes:\nUnfinished",
+                "Unclosed notes comment",
+            ),
             ("\n\n", "no slides"),
         ] {
             assert!(

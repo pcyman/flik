@@ -19,16 +19,16 @@ Run `cargo run --locked -- --presenter examples/demo.md`. Move the **Audience** 
 
 The presenter view shows the current slide, its speaker notes, and the next slide. The elapsed timer starts only when you click **Start**. **Pause** and **Resume** let you take a break; **Reset** stops the timer and returns it to zero. Reloading the presenter page also resets the timer.
 
-Add notes with a top-level `notes` code fence anywhere in the slide body, after the layout comment if there is one:
+Add notes in a standalone `<!-- notes: ... -->` comment in the slide body, after the layout comment if there is one:
 
-````markdown
+```markdown
 ## Demo
 
-```notes
+<!-- notes:
 Ask who has tried the old setup.
 Pause before showing the demo.
+-->
 ```
-````
 
 Notes are plain text and are omitted from the audience view and PDF export. Share just the audience window, not the whole desktop or the Markdown source if the notes are sensitive.
 

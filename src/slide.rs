@@ -1,5 +1,5 @@
 //! Per-slide layout parsing and Markdown-to-HTML rendering.
-use pulldown_cmark::{CodeBlockKind, CowStr, Event, Options, Parser, Tag, TagEnd, html};
+use pulldown_cmark::{CowStr, Event, Options, Parser, Tag, TagEnd, html};
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -48,35 +48,44 @@ pub(super) fn render(
         (Layout::Content, raw)
     };
     let mut notes = Vec::new();
-    let mut current_note = None::<String>;
     let mut depth = 0;
-    let events = Parser::new_ext(body, options).filter_map(|event| {
-        if let Some(note) = &mut current_note {
-            match event {
-                Event::End(TagEnd::CodeBlock) => {
-                    let note = current_note.take().unwrap();
-                    if !note.trim().is_empty() {
-                        notes.push(note.trim_end_matches('\n').to_owned());
-                    }
+    let mut skip_html_block = false;
+    let mut unclosed_notes = false;
+    let events = Parser::new_ext(body, options)
+        .into_offset_iter()
+        .filter_map(|(event, range)| {
+            if skip_html_block {
+                if matches!(event, Event::End(TagEnd::HtmlBlock)) {
+                    skip_html_block = false;
                 }
-                Event::Text(text) => note.push_str(&text),
-                _ => {}
-            }
-            return None;
-        }
-        match &event {
-            Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(info)))
-                if depth == 0 && info.as_ref() == "notes" =>
-            {
-                current_note = Some(String::new());
                 return None;
             }
-            Event::Start(_) => depth += 1,
-            Event::End(_) => depth -= 1,
-            _ => {}
-        }
-        Some(event)
-    });
+            match &event {
+                Event::Start(Tag::HtmlBlock) if depth == 0 => {
+                    let mut remainder = &body[range];
+                    while let Some(comment) = remainder.trim_start().strip_prefix("<!-- notes:") {
+                        skip_html_block = true;
+                        let Some((note, tail)) = comment.split_once("-->") else {
+                            unclosed_notes = true;
+                            return None;
+                        };
+                        if !note.trim().is_empty() {
+                            notes.push(note.trim().replace("\r\n", "\n"));
+                        }
+                        remainder = tail;
+                    }
+                    if skip_html_block {
+                        return (!remainder.trim().is_empty())
+                            .then(|| Event::Text(remainder.into()));
+                    }
+                    depth += 1;
+                }
+                Event::Start(_) => depth += 1,
+                Event::End(_) => depth -= 1,
+                _ => {}
+            }
+            Some(event)
+        });
     let events = events.map(|event| match event {
         Event::Html(text) | Event::InlineHtml(text) => Event::Text(text),
         Event::Start(Tag::Image {
@@ -120,6 +129,9 @@ pub(super) fn render(
     });
     let mut rendered = String::new();
     html::push_html(&mut rendered, events);
+    if unclosed_notes {
+        return Err("Unclosed notes comment (expected -->)".into());
+    }
     Ok(Slide {
         layout,
         html: rendered,
