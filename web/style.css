@@ -21,7 +21,8 @@ body {
   justify-content: space-between;
   background: #191e28;
 }
-.identity, nav { display: flex; align-items: center; gap: .8rem; }
+.identity, .actions, nav { display: flex; align-items: center; gap: .8rem; }
+.actions { flex-wrap: wrap; justify-content: flex-end; }
 .identity { min-width: 0; }
 .brand {
   color: #b6c8ff;
@@ -103,4 +104,21 @@ kbd { margin-inline-start: .3em; color: #b6c8ff; }
 .slide-copy { overflow: hidden; }
 .slide-media { display: grid; place-items: center; overflow: hidden; }
 .slide-media img { width: 100%; max-height: 580px; object-fit: contain; }
+#print-deck { display: none; }
 @media (max-width: 460px) { nav button span { display: none; } }
+
+@page deck-slide { size: 1280px 720px; margin: 0; }
+@media print {
+  body.printing-deck { display: block; height: auto; min-height: 0; }
+  .printing-deck > :not(#print-deck) { display: none; }
+  .printing-deck #print-deck {
+    display: block;
+    print-color-adjust: exact;
+  }
+  #print-deck > .slide {
+    page: deck-slide;
+    position: static;
+    break-inside: avoid;
+  }
+  #print-deck > .slide + .slide { break-before: page; }
+}

@@ -12,6 +12,6 @@ With a current stable Rust toolchain, run:
 cargo run --locked -- examples/demo.md
 ```
 
-Press **F** to present full-screen and use **← / →** to move between slides.
+Press **F** to present full-screen and use **← / →** to move between slides. Click **Export PDF** to save the deck through the browser’s print dialog.
 
 [Read the demo deck](examples/demo.md) · [User guide](docs/guide.md)

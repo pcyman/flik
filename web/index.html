@@ -13,7 +13,10 @@
       <span class="brand">FLIK</span>
       <h1 id="deck-title">Presentation preview</h1>
     </div>
-    <button id="present" type="button" aria-keyshortcuts="F" disabled>Present <kbd>F</kbd></button>
+    <div class="actions">
+      <button id="export-pdf" type="button" disabled>Export PDF</button>
+      <button id="present" type="button" aria-keyshortcuts="F" disabled>Present <kbd>F</kbd></button>
+    </div>
   </header>
   <main id="stage" class="stage" aria-label="Slide preview">
     <div id="frame" class="frame" hidden>
@@ -32,5 +35,6 @@
       <p id="error" role="alert" hidden></p>
     </div>
   </footer>
+  <div id="print-deck"></div>
 </body>
 </html>

@@ -12,6 +12,10 @@ Press **F** or click **Present** for full screen, and **Esc** to exit. Use the *
 
 Saving Markdown or local images refreshes the preview and keeps your slide position where possible. Invalid edits leave the last valid deck visible. Overflowing slide content is clipped, with a warning in preview.
 
+## Export to PDF
+
+Click **Export PDF** in the preview toolbar, then choose **Save as PDF** in the browser’s print dialog. Flik prints the whole deck in slide order, with one 16:9 slide per page and no preview controls. If the browser adds headers or footers or rescales the slides, turn off headers and footers and use the default scale and page size.
+
 ## Write a deck
 
 The [example deck](../examples/demo.md) shows all three layouts and a custom theme.
