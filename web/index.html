@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flik · Presentation preview</title>
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header class="toolbar">
+    <div class="identity">
+      <span class="brand">FLIK</span>
+      <h1 id="deck-title">Presentation preview</h1>
+    </div>
+    <button id="present" type="button" aria-keyshortcuts="F" disabled>Present <kbd>F</kbd></button>
+  </header>
+  <main id="stage" class="stage" aria-label="Slide preview">
+    <div id="frame" class="frame" hidden>
+      <article id="slide" class="slide" aria-label="Current slide"></article>
+    </div>
+    <p id="placeholder" role="status">Loading presentation…</p>
+  </main>
+  <footer class="toolbar footer">
+    <nav aria-label="Slide navigation">
+      <button id="previous" type="button" aria-keyshortcuts="ArrowLeft" disabled>← <span>Previous</span></button>
+      <output id="position" aria-live="polite">0 / 0</output>
+      <button id="next" type="button" aria-keyshortcuts="ArrowRight Space" disabled><span>Next</span> →</button>
+    </nav>
+    <div class="messages">
+      <p id="warning" role="status" hidden>Slide overflows. Some content is clipped.</p>
+      <p id="error" role="alert" hidden></p>
+    </div>
+  </footer>
+</body>
+</html>
