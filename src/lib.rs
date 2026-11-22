@@ -117,6 +117,22 @@ mod tests {
     }
 
     #[test]
+    fn extracts_top_level_notes_without_changing_slide_boundaries() {
+        let source = "<!-- layout: title -->\r\n## First\r\n\r\n```notes\r\n  Private <text>\r\n---\r\n```\r\n\r\n~~~notes\r\nSecond cue\r\n~~~\r\n\r\n> ```notes\r\n> Example code\r\n> ```\r\n\r\n---\r\n\r\n## Next\r\n";
+        let deck = render(source, "fallback", |_| None).unwrap();
+        assert_eq!(deck.slides.len(), 2);
+        assert_eq!(deck.slides[0].notes, "  Private <text>\n---\n\nSecond cue");
+        assert!(deck.slides[1].notes.is_empty());
+        let first = to_value(&deck.slides[0]).unwrap();
+        assert_eq!(first["layout"], "title");
+        assert!(first.get("notes").is_none());
+        let html = first["html"].as_str().unwrap();
+        assert!(html.contains("Example code"));
+        assert!(!html.contains("Private"));
+        assert!(!html.contains("Second cue"));
+    }
+
+    #[test]
     fn escapes_raw_html_and_filters_urls() {
         let deck = render(
             "<div>raw</div>\n\n[x](ftp://example.test) ![alt](https://example.test/p.png)",

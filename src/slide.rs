@@ -1,11 +1,14 @@
 //! Per-slide layout parsing and Markdown-to-HTML rendering.
-use pulldown_cmark::{CowStr, Event, Options, Parser, Tag, html};
+use pulldown_cmark::{CodeBlockKind, CowStr, Event, Options, Parser, Tag, TagEnd, html};
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
 pub struct Slide {
     layout: Layout,
     html: String,
+    // The default serialized slide is safe for audience views and export.
+    #[serde(skip)]
+    pub notes: String,
 }
 
 #[derive(Debug, Serialize, Default)]
@@ -44,7 +47,37 @@ pub(super) fn render(
     } else {
         (Layout::Content, raw)
     };
-    let events = Parser::new_ext(body, options).map(|event| match event {
+    let mut notes = Vec::new();
+    let mut current_note = None::<String>;
+    let mut depth = 0;
+    let events = Parser::new_ext(body, options).filter_map(|event| {
+        if let Some(note) = &mut current_note {
+            match event {
+                Event::End(TagEnd::CodeBlock) => {
+                    let note = current_note.take().unwrap();
+                    if !note.trim().is_empty() {
+                        notes.push(note.trim_end_matches('\n').to_owned());
+                    }
+                }
+                Event::Text(text) => note.push_str(&text),
+                _ => {}
+            }
+            return None;
+        }
+        match &event {
+            Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(info)))
+                if depth == 0 && info.as_ref() == "notes" =>
+            {
+                current_note = Some(String::new());
+                return None;
+            }
+            Event::Start(_) => depth += 1,
+            Event::End(_) => depth -= 1,
+            _ => {}
+        }
+        Some(event)
+    });
+    let events = events.map(|event| match event {
         Event::Html(text) | Event::InlineHtml(text) => Event::Text(text),
         Event::Start(Tag::Image {
             link_type,
@@ -90,5 +123,6 @@ pub(super) fn render(
     Ok(Slide {
         layout,
         html: rendered,
+        notes: notes.join("\n\n"),
     })
 }

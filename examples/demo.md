@@ -11,6 +11,10 @@ theme:
 
 A presentation written entirely in Markdown
 
+```notes
+Welcome everyone. This deck doubles as a demo of Flik’s presenter mode.
+```
+
 ---
 
 # Write in your editor
@@ -18,6 +22,10 @@ A presentation written entirely in Markdown
 - Put `---` on its own line between slides.
 - Save the file to refresh the preview.
 - Press **F** to go full-screen. Use the arrow keys to move between slides.
+
+```notes
+Show how a saved edit refreshes both views without restarting the talk timer.
+```
 
 ---
 

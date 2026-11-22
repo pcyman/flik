@@ -20,10 +20,14 @@ pub(crate) struct PreviewServer {
     server: Server,
     host: String,
     deck: DeckState,
+    presenter: bool,
 }
 
 impl PreviewServer {
-    pub(crate) fn bind(path: PathBuf) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    pub(crate) fn bind(
+        path: PathBuf,
+        presenter: bool,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         if !path.is_file() {
             return Err(format!("Not a file: {}", path.display()).into());
         }
@@ -40,11 +44,17 @@ impl PreviewServer {
             path,
             root,
             cached: None,
+            position: 0,
         };
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
         let host = listener.local_addr()?.to_string();
         let server = Server::from_listener(listener, None)?;
-        Ok(Self { server, host, deck })
+        Ok(Self {
+            server,
+            host,
+            deck,
+            presenter,
+        })
     }
 
     pub(crate) fn url(&self) -> String {
@@ -53,7 +63,7 @@ impl PreviewServer {
 
     pub(crate) fn serve(mut self) {
         for request in self.server.incoming_requests() {
-            self.deck.serve(request, &self.host);
+            self.deck.serve(request, &self.host, self.presenter);
         }
     }
 }
@@ -63,6 +73,7 @@ struct DeckState {
     root: PathBuf,
     title: String,
     cached: Option<Snapshot>,
+    position: usize,
 }
 
 struct Snapshot {
@@ -72,7 +83,7 @@ struct Snapshot {
 }
 
 impl DeckState {
-    fn deck(&mut self) -> String {
+    fn deck(&mut self, include_notes: bool) -> String {
         let mut bytes = Vec::new();
         if let Err(err) = File::open(&self.path)
             .and_then(|file| file.take(MAX_DECK_BYTES + 1).read_to_end(&mut bytes))
@@ -90,7 +101,7 @@ impl DeckState {
             .as_ref()
             .filter(|cached| cached.source == source)
         {
-            return self.response(cached);
+            return self.response(cached, include_notes);
         }
         let mut assets = HashMap::new();
         match flik::render(&source, &self.title, |input| {
@@ -105,7 +116,8 @@ impl DeckState {
                     deck,
                     assets,
                 };
-                let response = self.response(&snapshot);
+                self.position = self.position.min(snapshot.deck.slides.len() - 1);
+                let response = self.response(&snapshot, include_notes);
                 self.cached = Some(snapshot);
                 response
             }
@@ -122,7 +134,7 @@ impl DeckState {
         Some(resolved)
     }
 
-    fn response(&self, snapshot: &Snapshot) -> String {
+    fn response(&self, snapshot: &Snapshot, include_notes: bool) -> String {
         let revisions: BTreeMap<_, _> = snapshot
             .assets
             .iter()
@@ -135,13 +147,76 @@ impl DeckState {
                 (url, revision)
             })
             .collect();
-        json!({"deck": snapshot.deck, "imageRevisions": revisions}).to_string()
+        let mut response = json!({"deck": snapshot.deck, "imageRevisions": revisions});
+        if include_notes {
+            let notes: Vec<_> = snapshot
+                .deck
+                .slides
+                .iter()
+                .map(|slide| &slide.notes)
+                .collect();
+            response["notes"] = json!(notes);
+        }
+        response.to_string()
     }
 
-    fn serve(&mut self, request: Request, host: &str) {
+    fn serve_position(&mut self, request: Request) {
+        match request.method() {
+            Method::Get => {}
+            Method::Post => {
+                // Cross-origin pages cannot send this header without an allowed CORS preflight.
+                let mut positions = request
+                    .headers()
+                    .iter()
+                    .filter(|h| h.field.equiv("X-Flik-Slide"));
+                let header = positions.next();
+                if header.is_none() || positions.next().is_some() {
+                    send_text(
+                        request,
+                        403,
+                        "text/plain; charset=utf-8",
+                        "Missing or ambiguous slide header",
+                    );
+                    return;
+                }
+                let position = header.and_then(|h| h.value.as_str().parse::<usize>().ok());
+                let (Some(position), Some(snapshot)) = (position, &self.cached) else {
+                    send_text(
+                        request,
+                        400,
+                        "text/plain; charset=utf-8",
+                        "Invalid slide position",
+                    );
+                    return;
+                };
+                self.position = position.min(snapshot.deck.slides.len() - 1);
+            }
+            _ => {
+                send_text(
+                    request,
+                    405,
+                    "text/plain; charset=utf-8",
+                    "Method not allowed",
+                );
+                return;
+            }
+        }
+        send_text(
+            request,
+            200,
+            "application/json; charset=utf-8",
+            json!(self.position).to_string(),
+        );
+    }
+
+    fn serve(&mut self, request: Request, host: &str, presenter: bool) {
         let headers = request.headers().iter().filter(|h| h.field.equiv("Host"));
         if !headers.map(|h| h.value.as_str()).eq([host]) {
             send_text(request, 403, "text/plain; charset=utf-8", "Forbidden host");
+            return;
+        }
+        if presenter && request.url() == "/api/position" {
+            self.serve_position(request);
             return;
         }
         if request.method() != &Method::Get {
@@ -154,12 +229,14 @@ impl DeckState {
             return;
         }
         match request.url() {
-            "/" => send_text(
-                request,
-                200,
-                "text/html; charset=utf-8",
-                include_str!("../../web/index.html"),
-            ),
+            url if url == "/" || (presenter && matches!(url, "/audience" | "/presenter")) => {
+                send_text(
+                    request,
+                    200,
+                    "text/html; charset=utf-8",
+                    include_str!("../../web/index.html"),
+                )
+            }
             "/style.css" => send_text(
                 request,
                 200,
@@ -178,7 +255,10 @@ impl DeckState {
                 "text/javascript; charset=utf-8",
                 include_str!("../../web/renderer.js"),
             ),
-            "/api/deck" => send_text(request, 200, "application/json; charset=utf-8", self.deck()),
+            url if url == "/api/deck" || (presenter && url == "/api/presenter") => {
+                let body = self.deck(url == "/api/presenter");
+                send_text(request, 200, "application/json; charset=utf-8", body);
+            }
             url => {
                 let image = self
                     .cached
@@ -212,4 +292,41 @@ fn send(request: Request, mut response: Response<impl Read>, content_type: &str)
         response.add_header(Header::from_bytes(name, value).expect("valid HTTP header"));
     }
     let _ = request.respond(response);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{io::Write, net::TcpStream, time::Duration};
+
+    #[test]
+    fn presenter_position_is_shared_and_writes_require_a_custom_header() {
+        let preview = PreviewServer::bind(PathBuf::from("examples/demo.md"), true).unwrap();
+        let host = preview.host.clone();
+        std::thread::spawn(move || preview.serve());
+        let request = |method, path, position: Option<&str>| {
+            let mut stream = TcpStream::connect(&host).unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(3)))
+                .unwrap();
+            let header =
+                position.map_or(String::new(), |value| format!("X-Flik-Slide: {value}\r\n"));
+            write!(stream, "{method} {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\nContent-Length: 0\r\n{header}\r\n").unwrap();
+            let mut response = String::new();
+            stream.read_to_string(&mut response).unwrap();
+            let (headers, body) = response.split_once("\r\n\r\n").unwrap();
+            (
+                headers.split_whitespace().nth(1).unwrap().to_owned(),
+                body.to_owned(),
+            )
+        };
+        assert_eq!(request("GET", "/api/deck", None).0, "200");
+        assert_eq!(request("GET", "/api/position", None).1, "0");
+        assert_eq!(request("POST", "/api/position", Some("1")).0, "200");
+        assert_eq!(request("GET", "/api/position", None).1, "1");
+        assert_eq!(request("POST", "/api/position", None).0, "403");
+        assert_eq!(request("OPTIONS", "/api/position", None).0, "405");
+        assert_eq!(request("POST", "/api/position", Some("invalid")).0, "400");
+        assert_eq!(request("GET", "/api/position", None).1, "1");
+    }
 }

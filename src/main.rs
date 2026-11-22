@@ -20,7 +20,11 @@ struct Cli {
     #[arg(long, conflicts_with = "no_open")]
     app: bool,
 
-    /// Print the preview URL without opening a browser.
+    /// Open synced audience and presenter views with notes and a timer.
+    #[arg(long)]
+    presenter: bool,
+
+    /// Print the view URL(s) without opening a browser.
     #[arg(long)]
     no_open: bool,
 }
@@ -37,11 +41,24 @@ fn main() -> ExitCode {
 
 fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let path = env::current_dir()?.join(cli.deck);
-    let preview = PreviewServer::bind(path)?;
-    let url = preview.url();
-    println!("Preview: {url}\nPress Ctrl+C to stop.");
+    let preview = PreviewServer::bind(path, cli.presenter)?;
+    let root = preview.url();
+    let views = if cli.presenter {
+        vec![
+            ("Audience", format!("{root}audience")),
+            ("Presenter", format!("{root}presenter")),
+        ]
+    } else {
+        vec![("Preview", root)]
+    };
+    for (label, url) in &views {
+        println!("{label}: {url}");
+    }
+    println!("Press Ctrl+C to stop.");
     if !cli.no_open {
-        launch_preview(url, cli.app);
+        for (_, url) in views {
+            launch_preview(url, cli.app);
+        }
     }
     preview.serve();
     Ok(())
@@ -79,7 +96,14 @@ mod tests {
     fn cli_parses_launch_modes() {
         let cli = Cli::try_parse_from(["flik", "examples/demo.md"]).unwrap();
         assert_eq!(cli.deck, Path::new("examples/demo.md"));
-        assert!(!cli.app && !cli.no_open);
+        assert!(!cli.app && !cli.no_open && !cli.presenter);
+        for option in ["--app", "--no-open"] {
+            assert!(
+                Cli::try_parse_from(["flik", "--presenter", option, "deck.md"])
+                    .unwrap()
+                    .presenter
+            );
+        }
         assert!(
             Cli::try_parse_from(["flik", "--app", "deck.md"])
                 .unwrap()
