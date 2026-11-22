@@ -136,7 +136,8 @@ kbd { margin-inline-start: .3em; color: #b6c8ff; }
   font-size: clamp(1.15rem, 2.5vw, 1.65rem);
   line-height: 1.5;
 }
-#next-stage { padding: .5rem; text-align: center; }
+#next-stage { padding: .5rem; }
+#next-placeholder { text-align: center; }
 #elapsed { font-variant-numeric: tabular-nums; }
 #talk-timer { gap: .4rem; }
 @media (max-width: 540px) { .presenter .toolbar { flex-wrap: wrap; } }
